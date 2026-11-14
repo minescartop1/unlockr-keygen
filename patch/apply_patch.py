@@ -17,6 +17,7 @@
 """
 
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -79,6 +80,16 @@ BADGE_PATCH = """    invoke-super {p0, p1, p2}, Landroid/webkit/WebViewClient;->
 """
 
 LICENSE_CALL = """    invoke-static {p1}, Lcom/pairip/licensecheck/LicenseClient;->checkLicense(Landroid/content/Context;)V
+"""
+
+PARAM_ANCHOR = """.method public static final B(Lmd/d;Ljava/lang/String;Ljava/lang/Object;)V
+    .locals 1
+"""
+
+PARAM_PATCH = """.method public static final B(Lmd/d;Ljava/lang/String;Ljava/lang/Object;)V
+    .locals 1
+
+    invoke-static {p1, p2}, Lsk/crack;->logParam(Ljava/lang/String;Ljava/lang/Object;)V
 """
 
 
@@ -150,6 +161,24 @@ def patch_license(path: Path) -> None:
     print(f"  пропатчено: {path} (проверка лицензии отключена)")
 
 
+def patch_token_log(path: Path) -> None:
+    """Вешает логирование query-параметров (нужен integrityToken).
+
+    Lwc/a;->B(request, name, value) — хелпер, которым заполняются query-параметры
+    всех запросов приложения. Логируем только параметр integrityToken: он в
+    logcat и в /sdcard/Download/unlockr_pi.txt, откуда его можно забрать без
+    root и без перехвата TLS.
+    """
+    text = path.read_text(encoding="utf-8")
+    if "logParam" in text:
+        print(f"  уже пропатчено: {path}")
+        return
+    if PARAM_ANCHOR not in text:
+        raise SystemExit(f"ЯКОРЬ НЕ НАЙДЕН в {path}")
+    path.write_text(text.replace(PARAM_ANCHOR, PARAM_PATCH, 1), encoding="utf-8")
+    print(f"  пропатчено: {path} (логирование integrityToken)")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
@@ -160,15 +189,22 @@ def main() -> int:
 
     js = smali_string((HERE / "badge.js").read_text(encoding="utf-8"))
 
-    print("1/3 баланс -> 99999 (wc/d.smali)")
+    print("1/4 баланс -> 99999 (wc/d.smali)")
     patch_tokens(root / "smali" / "wc" / "d.smali")
 
-    print("2/3 надпись (pg/g.smali, pg/h.smali)")
+    print("2/4 надпись (pg/g.smali, pg/h.smali)")
     for name in ("g.smali", "h.smali"):
         patch_badge(root / "smali_classes2" / "pg" / name, js)
 
-    print("3/3 проверка лицензии Play (pairip)")
+    print("3/4 проверка лицензии Play (pairip)")
     patch_license(root / "smali" / "com" / "pairip" / "application" / "Application.smali")
+
+    print("4/4 класс sk/crack + логирование токена")
+    sk_dir = root / "smali" / "sk"
+    sk_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(HERE / "sk" / "crack.smali", sk_dir / "crack.smali")
+    print(f"  -> {sk_dir / 'crack.smali'}")
+    patch_token_log(root / "smali" / "wc" / "a.smali")
 
     print("\nготово. собирай: bash build.sh <каталог> <выходной apk>")
     return 0
