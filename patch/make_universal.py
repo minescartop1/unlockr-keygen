@@ -16,10 +16,14 @@ base.apk сам по себе не ставится: нет нативных б�
     python3 make_universal.py <base.apk> <arm64 split> <out apk> <classes.dex> <classes2.dex>
 """
 
+import os
 import shutil
 import sys
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from manifest_patch import patch as patch_axml  # noqa: E402
 
 SIGNATURE_MARKERS = (
     "META-INF/MANIFEST.MF",
@@ -40,13 +44,17 @@ def is_signature_entry(name: str) -> bool:
 
 
 def main() -> int:
-    if len(sys.argv) != 6:
+    if len(sys.argv) < 6:
         print(__doc__)
         return 1
     base = Path(sys.argv[1])
     arm64 = Path(sys.argv[2])
     out = Path(sys.argv[3])
     dexes = {Path(p).name: Path(p).read_bytes() for p in sys.argv[4:]}
+    # SHA-256 сертификата подписи новой сборки (hex, без пробелов).
+    # Им подменяется stamp-cert-sha256, который приложение сверяет со своим.
+    stamp_hex = os.environ.get("STAMP_CERT_SHA256", "").strip().replace(":", "")
+    stamp = bytes.fromhex(stamp_hex) if stamp_hex else None
 
     tmp = out.with_suffix(out.suffix + ".tmp")
     written = set()
@@ -62,7 +70,18 @@ def main() -> int:
                 written.add(name)
                 print(f"  заменён {name} ({len(dexes[name])} байт)")
                 continue
-            zout.writestr(info, zin.read(name), compress_type=info.compress_type)
+            payload = zin.read(name)
+            if name == "AndroidManifest.xml":
+                payload, n = patch_axml(payload, "base__abi,base__density", "")
+                if n:
+                    print("  манифест: снято требование сплитов "
+                          "(android:requiredSplitTypes)")
+            elif name == "stamp-cert-sha256" and stamp is not None:
+                if len(stamp) != len(payload):
+                    raise SystemExit("размер stamp не совпал")
+                payload = stamp
+                print("  stamp-cert-sha256: подставлен хэш нового сертификата")
+            zout.writestr(info, payload, compress_type=info.compress_type)
 
         with zipfile.ZipFile(arm64, "r") as zsplit:
             for info in zsplit.infolist():

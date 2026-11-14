@@ -78,6 +78,9 @@ BADGE_PATCH = """    invoke-super {p0, p1, p2}, Landroid/webkit/WebViewClient;->
     invoke-virtual {p0, v9, v10}, Landroid/webkit/WebView;->evaluateJavascript(Ljava/lang/String;Landroid/webkit/ValueCallback;)V
 """
 
+LICENSE_CALL = """    invoke-static {p1}, Lcom/pairip/licensecheck/LicenseClient;->checkLicense(Landroid/content/Context;)V
+"""
+
 
 def smali_string(text: str) -> str:
     """Экранирует строку для const-string в smali."""
@@ -125,6 +128,28 @@ def patch_badge(path: Path, js: str) -> None:
     print(f"  пропатчено: {path} (locals {old} -> {new})")
 
 
+def patch_license(path: Path) -> None:
+    """Убирает проверку лицензии Play (PAIRIP).
+
+    com/pairip/application/Application.attachBaseContext дёргает
+    LicenseClient.checkLicense(), который подключается к сервису лицензий
+    Play Store (com.android.vending) и сверяет сертификат подписи с
+    stamp-cert-sha256. Без Play Store приложение показывает экран
+    «не лицензировано» и закрывается.
+
+    После правки приложение стартует вообще без Google-сервисов.
+    """
+    text = path.read_text(encoding="utf-8")
+    if "checkLicense" not in text:
+        print(f"  уже пропатчено: {path}")
+        return
+    if LICENSE_CALL not in text:
+        raise SystemExit(f"ЯКОРЬ НЕ НАЙДЕН в {path}")
+    text = text.replace(LICENSE_CALL + "\n", "", 1)
+    path.write_text(text, encoding="utf-8")
+    print(f"  пропатчено: {path} (проверка лицензии отключена)")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
@@ -135,12 +160,15 @@ def main() -> int:
 
     js = smali_string((HERE / "badge.js").read_text(encoding="utf-8"))
 
-    print("1/2 баланс -> 99999 (wc/d.smali)")
+    print("1/3 баланс -> 99999 (wc/d.smali)")
     patch_tokens(root / "smali" / "wc" / "d.smali")
 
-    print("2/2 надпись (pg/g.smali, pg/h.smali)")
+    print("2/3 надпись (pg/g.smali, pg/h.smali)")
     for name in ("g.smali", "h.smali"):
         patch_badge(root / "smali_classes2" / "pg" / name, js)
+
+    print("3/3 проверка лицензии Play (pairip)")
+    patch_license(root / "smali" / "com" / "pairip" / "application" / "Application.smali")
 
     print("\nготово. собирай: bash build.sh <каталог> <выходной apk>")
     return 0
