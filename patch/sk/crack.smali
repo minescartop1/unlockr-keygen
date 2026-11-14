@@ -9,7 +9,7 @@
 .end method
 
 .method public static logParam(Ljava/lang/String;Ljava/lang/Object;)V
-    .registers 4
+    .registers 5
 
     if-eqz p0, :skip
 
@@ -60,7 +60,7 @@
 .end method
 
 .method private static dump(Ljava/lang/String;)V
-    .registers 3
+    .registers 4
 
     :try_start
     new-instance v0, Ljava/io/FileWriter;
