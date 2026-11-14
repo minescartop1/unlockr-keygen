@@ -24,6 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from manifest_patch import patch as patch_axml  # noqa: E402
+from manifest_patch import rename_strings  # noqa: E402
 
 SIGNATURE_MARKERS = (
     "META-INF/MANIFEST.MF",
@@ -50,6 +51,20 @@ MANIFEST_PATCHES = (
     ("com.android.vending.derived.apk.id",
      "com.android.vending.derived.apk.iD"),
 )
+
+# Точечное переименование: только package и authorities. Имена классов
+# (me.tito.unlocker.MainActivity) трогать нельзя — в dex они прежние.
+PKG_RENAME = {
+    "me.tito.unlocker": "m.tito.unlockr.x",
+    "me.tito.unlocker.IronsourceLifecycleProvider":
+        "m.tito.unlockr.x.IronsourceLifecycleProvider",
+    "me.tito.unlocker.firebaseinitprovider":
+        "m.tito.unlockr.x.firebaseinitprovider",
+    "me.tito.unlocker.androidx-startup":
+        "m.tito.unlockr.x.androidx-startup",
+    "me.tito.unlocker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION":
+        "m.tito.unlockr.x.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+}
 
 
 def is_signature_entry(name: str) -> bool:
@@ -94,11 +109,8 @@ def main() -> int:
             payload = zin.read(name)
             if name == "AndroidManifest.xml":
                 if os.environ.get("RENAME_PKG") == "1":
-                    cnt = 0
-                    for old_b, new_b in zip(OLD_BYTES, NEW_BYTES):
-                        cnt += payload.count(old_b)
-                        payload = payload.replace(old_b, new_b)
-                    print(f"  манифест: пакет переименован в {NEW_PKG} (замен {cnt})")
+                    payload, cnt = rename_strings(payload, PKG_RENAME)
+                    print(f"  манифест: точечно переименовано строк: {cnt}")
                 if not keep_required_splits:
                     payload, n = patch_axml(payload, "base__abi,base__density", "")
                     if n:

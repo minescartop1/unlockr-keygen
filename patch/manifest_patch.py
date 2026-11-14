@@ -83,6 +83,61 @@ def patch(data: bytes, target: str, replacement: str = "") -> tuple[bytes, int]:
     return bytes(out), patched
 
 
+def rename_strings(data: bytes, mapping: dict) -> tuple[bytes, int]:
+    """Переименовывает строки в string pool по ТОЧНОМУ совпадению.
+
+    Важно: менять можно только те записи, которые не являются именами
+    классов (значение package и authorities). Глобальная замена префикса
+    «me.tito.unlocker» ломает android:name у activity (me.tito.unlocker.MainActivity
+    -> m.tito.unlockr.x.MainActivity), а такого класса в dex нет — приложение
+    падает сразу при старте.
+    """
+    if data[:4] != b"\x03\x00\x08\x00":
+        raise SystemExit("это не бинарный AXML")
+
+    pool_off = 8
+    if struct.unpack_from("<H", data, pool_off)[0] != CHUNK_STRING_POOL:
+        raise SystemExit("string pool не первый chunk")
+    string_count = struct.unpack_from("<I", data, pool_off + 8)[0]
+    flags = struct.unpack_from("<I", data, pool_off + 16)[0]
+    strings_start = struct.unpack_from("<I", data, pool_off + 20)[0]
+    is_utf8 = bool(flags & UTF8_FLAG)
+    base = pool_off + strings_start
+    out = bytearray(data)
+    patched = 0
+
+    for i in range(string_count):
+        rel = struct.unpack_from("<I", data, pool_off + 28 + i * 4)[0]
+        p = base + rel
+        if is_utf8:
+            nbytes, nchars = struct.unpack_from("<HH", data, p)
+            raw = data[p + 2 + nbytes:p + 2 + nbytes + nchars]
+            text = raw.decode("utf-8", "replace")
+            if text in mapping:
+                new = mapping[text].encode("utf-8")
+                if len(new) > nbytes:
+                    raise SystemExit(f"новая строка длиннее: {text}")
+                struct.pack_into("<HH", out, p, len(new), len(new))
+                out[p + 2:p + 2 + len(new)] = new
+                out[p + 2 + len(new)] = 0x00
+                patched += 1
+        else:
+            nchars = struct.unpack_from("<H", data, p)[0]
+            raw = data[p + 2:p + 2 + nchars * 2]
+            text = raw.decode("utf-16-le", "replace")
+            if text in mapping:
+                new = mapping[text].encode("utf-16-le")
+                if len(new) > nchars * 2:
+                    raise SystemExit(f"новая строка длиннее: {text}")
+                struct.pack_into("<H", out, p, len(new) // 2)
+                out[p + 2:p + 2 + len(new)] = new
+                out[p + 2 + len(new)] = 0x00
+                out[p + 3 + len(new)] = 0x00
+                patched += 1
+
+    return bytes(out), patched
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__)
