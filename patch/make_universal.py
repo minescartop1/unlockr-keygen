@@ -39,6 +39,18 @@ NEW_PKG = "m.tito.unlockr.x"  # ровно 16 символов, как OLD_PKG �
 OLD_BYTES = (OLD_PKG.encode("ascii"), OLD_PKG.encode("utf-16-le"))
 NEW_BYTES = (NEW_PKG.encode("ascii"), NEW_PKG.encode("utf-16-le"))
 
+# Замены в манифесте той же длины (иначе едут оффсеты string pool).
+# 1) LicenseActivity -> класс, которого нет: ActivityNotFound вместо экрана
+#    «your device doesn't meet our security requirements».
+# 2) com.android.vending.derived.apk.id -> Play Store перестаёт слать
+#    CHECK_LICENSE на переподписанную сборку.
+MANIFEST_PATCHES = (
+    ("com.pairip.licensecheck.LicenseActivity",
+     "com.pairip.licensecheck.LicenseActivitY"),
+    ("com.android.vending.derived.apk.id",
+     "com.android.vending.derived.apk.iD"),
+)
+
 
 def is_signature_entry(name: str) -> bool:
     upper = name.upper()
@@ -92,6 +104,12 @@ def main() -> int:
                     if n:
                         print("  манифест: снято требование сплитов "
                               "(android:requiredSplitTypes)")
+                for old_s, new_s in MANIFEST_PATCHES:
+                    for enc in ("ascii", "utf-16-le"):
+                        ob, nb = old_s.encode(enc), new_s.encode(enc)
+                        if ob in payload:
+                            payload = payload.replace(ob, nb)
+                            print(f"  манифест: '{old_s}' -> '{new_s}'")
             elif name == "stamp-cert-sha256" and stamp is not None:
                 if len(stamp) != len(payload):
                     raise SystemExit("размер stamp не совпал")

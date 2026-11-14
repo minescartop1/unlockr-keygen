@@ -215,12 +215,28 @@ def run_one(uid: str, token: str, ver: str) -> dict:
 
 
 def try_tokens(uid: str, tokens: list[str], ver: str) -> tuple[dict, str]:
-    """Перебирает кандидатов: сервер принимает только токен от сборки из Play."""
+    """Перебирает кандидатов: сервер принимает только токен от сборки из Play.
+
+    Аккаунт заводится один раз, дальше каждый кандидат проверяется тем же uid —
+    баланс от неудачных попыток не меняется.
+    """
+    balance = register(uid)
+    print(f"uid    : {uid}")
+    print(f"баланс : {balance} (всего {sum(balance.values())})")
     last = None
     for i, tok in enumerate(tokens, 1):
         print(f"\n-- кандидат {i}/{len(tokens)} ({len(tok)} симв.) --")
         try:
-            return run_one(uid, tok, ver), tok
+            dto = generate(uid, tok, ver)
+            print(f"заявка : credits={dto.get('credits')} "
+                  f"count={dto.get('count')} "
+                  f"expiration={dto.get('expiration')} "
+                  f"pollingInterval={dto.get('pollingInterval')}")
+            dto = wait_for_code(uid, dto, tok, ver)
+            print(f"КОД    : {dto.get('code')}")
+            if dto.get("redeem"):
+                print(f"redeem : {dto.get('redeem')}")
+            return dto, tok
         except PermissionError as err:
             last = err
             print(f"  отказ: {err}")
