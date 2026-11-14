@@ -25,6 +25,7 @@ KS="${KS:-$HOME/.android/unlockr_cracks.keystore}"
 KS_PASS="${KS_PASS:-unlockr}"
 ALIAS="${KS_ALIAS:-unlockr}"
 API_LEVEL="${API_LEVEL:-35}"
+REBALANCE_CLASSES="${REBALANCE_CLASSES:-400}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK="$(mktemp -d)"
@@ -52,6 +53,11 @@ sign_one() {
 }
 
 echo "==> smali -> dex"
+if [ "$REBALANCE_CLASSES" -gt 0 ]; then
+  echo "    ребаланс dex: переношу $REBALANCE_CLASSES классов в classes2.dex"
+  echo "    (в classes.dex таблица field_ids забита под 65536, нужен запас)"
+  python3 "$HERE/rebalance_dex.py" "$SRC" 999999 "$REBALANCE_CLASSES" | tail -3
+fi
 java -cp "$APKTOOL" "$HERE/DexOnly.java" "$SRC/smali" "$WORK/classes.dex" "$API_LEVEL"
 java -cp "$APKTOOL" "$HERE/DexOnly.java" "$SRC/smali_classes2" "$WORK/classes2.dex" "$API_LEVEL"
 
