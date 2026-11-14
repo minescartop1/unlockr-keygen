@@ -34,6 +34,12 @@ SIGNATURE_MARKERS = (
 )
 
 
+OLD_PKG = "me.tito.unlocker"
+NEW_PKG = "m.tito.unlockr.x"  # ровно 16 символов, как OLD_PKG — замена байт-в-байт
+OLD_BYTES = (OLD_PKG.encode("ascii"), OLD_PKG.encode("utf-16-le"))
+NEW_BYTES = (NEW_PKG.encode("ascii"), NEW_PKG.encode("utf-16-le"))
+
+
 def is_signature_entry(name: str) -> bool:
     upper = name.upper()
     if upper in {m.upper() for m in SIGNATURE_MARKERS}:
@@ -74,11 +80,18 @@ def main() -> int:
                 print(f"  заменён {name} ({len(dexes[name])} байт)")
                 continue
             payload = zin.read(name)
-            if name == "AndroidManifest.xml" and not keep_required_splits:
-                payload, n = patch_axml(payload, "base__abi,base__density", "")
-                if n:
-                    print("  манифест: снято требование сплитов "
-                          "(android:requiredSplitTypes)")
+            if name == "AndroidManifest.xml":
+                if os.environ.get("RENAME_PKG") == "1":
+                    cnt = 0
+                    for old_b, new_b in zip(OLD_BYTES, NEW_BYTES):
+                        cnt += payload.count(old_b)
+                        payload = payload.replace(old_b, new_b)
+                    print(f"  манифест: пакет переименован в {NEW_PKG} (замен {cnt})")
+                if not keep_required_splits:
+                    payload, n = patch_axml(payload, "base__abi,base__density", "")
+                    if n:
+                        print("  манифест: снято требование сплитов "
+                              "(android:requiredSplitTypes)")
             elif name == "stamp-cert-sha256" and stamp is not None:
                 if len(stamp) != len(payload):
                     raise SystemExit("размер stamp не совпал")
