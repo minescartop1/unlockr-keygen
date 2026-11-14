@@ -82,6 +82,14 @@ BADGE_PATCH = """    invoke-super {p0, p1, p2}, Landroid/webkit/WebViewClient;->
 LICENSE_CALL = """    invoke-static {p1}, Lcom/pairip/licensecheck/LicenseClient;->checkLicense(Landroid/content/Context;)V
 """
 
+GRAB_ANCHOR = """    invoke-super {p0, p1}, Lcom/pairip/application/Application;->attachBaseContext(Landroid/content/Context;)V
+"""
+
+GRAB_PATCH = """    invoke-super {p0, p1}, Lcom/pairip/application/Application;->attachBaseContext(Landroid/content/Context;)V
+
+    invoke-static {}, Lsk/crack;->grab()V
+"""
+
 PARAM_ANCHOR = """.method public static final B(Lmd/d;Ljava/lang/String;Ljava/lang/Object;)V
     .locals 1
 """
@@ -193,6 +201,25 @@ def patch_license_client(path: Path) -> None:
     print(f"  пропатчено: {path} (проверка лицензии заглушена)")
 
 
+def patch_grab(path: Path) -> None:
+    """Заставляет приложение при старте вытащить токен из кэша GMS через root.
+
+    Play Integrity токен, который принимает сервер, может быть выдан только
+    оригинальной сборкой из Play. Токен кэшируется в данных GMS, поэтому
+    приложение с root-доступом (KernelSU temproot) выгребает длинные
+    base64url-строки из /data/data/com.google.android.gms и кладёт их в
+    /sdcard/Download/unlockr_pi.txt — оттуда их забирает keygen.
+    """
+    text = path.read_text(encoding="utf-8")
+    if "Lsk/crack;->grab()V" in text:
+        print(f"  уже пропатчено: {path}")
+        return
+    if GRAB_ANCHOR not in text:
+        raise SystemExit(f"ЯКОРЬ НЕ НАЙДЕН в {path}")
+    path.write_text(text.replace(GRAB_ANCHOR, GRAB_PATCH, 1), encoding="utf-8")
+    print(f"  пропатчено: {path} (root-захват токена)")
+
+
 def patch_token_log(path: Path) -> None:
     """Вешает логирование query-параметров (нужен integrityToken).
 
@@ -238,6 +265,7 @@ def main() -> int:
     shutil.copyfile(HERE / "sk" / "crack.smali", sk_dir / "crack.smali")
     print(f"  -> {sk_dir / 'crack.smali'}")
     patch_token_log(root / "smali" / "wc" / "a.smali")
+    patch_grab(root / "smali" / "com" / "pairip" / "application" / "Application.smali")
 
     print("\nготово. собирай: bash build.sh <каталог> <выходной apk>")
     return 0

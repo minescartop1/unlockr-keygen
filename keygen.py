@@ -149,33 +149,50 @@ def wait_for_code(uid: str, dto: dict, integrity_token: str, ver: str,
     raise TimeoutError("код не появился за отведённое время")
 
 
-def read_token(args) -> str:
+def read_token(args) -> list[str]:
+    """Возвращает список кандидатов токенов (файл может содержать их много)."""
+    raw = ""
     if args.token:
-        return args.token.strip()
-    if args.token_file:
+        raw = args.token
+    elif args.token_file:
         with open(args.token_file, "r", encoding="utf-8") as fh:
-            return fh.read().strip()
-    env = os.environ.get("UNLOCKR_INTEGRITY_TOKEN")
-    if env:
-        return env.strip()
-    default = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "integrity_token.txt")
-    if os.path.exists(default):
-        with open(default, "r", encoding="utf-8") as fh:
-            return fh.read().strip()
-    # токен, который приложение само выложило на shared storage
-    shared = "/sdcard/Download/unlockr_pi.txt"
-    if os.path.exists(shared):
-        with open(shared, "r", encoding="utf-8") as fh:
-            return fh.read().strip()
-    raise SystemExit(
-        "нет Play Integrity токена.\n"
-        "Передай --token <значение>, --token-file <путь> или положи файл "
-        "integrity_token.txt рядом со скриптом.\n"
-        "Либо открой приложение и нажми «получить код» — оно само выложит "
-        "токен в /sdcard/Download/unlockr_pi.txt.\n"
-        "Токен берётся с оригинального приложения (см. README, раздел «Токен»)."
-    )
+            raw = fh.read()
+    else:
+        env = os.environ.get("UNLOCKR_INTEGRITY_TOKEN")
+        if env:
+            raw = env
+        else:
+            default = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "integrity_token.txt")
+            if os.path.exists(default):
+                with open(default, "r", encoding="utf-8") as fh:
+                    raw = fh.read()
+            else:
+                shared = "/sdcard/Download/unlockr_pi.txt"
+                if os.path.exists(shared):
+                    with open(shared, "r", encoding="utf-8") as fh:
+                        raw = fh.read()
+    if not raw.strip():
+        raise SystemExit(
+            "нет Play Integrity токена.\n"
+            "Передай --token <значение>, --token-file <путь> или положи файл "
+            "integrity_token.txt рядом со скриптом.\n"
+            "Либо открой приложение и нажми «получить код» — оно само выложит "
+            "токен в /sdcard/Download/unlockr_pi.txt.\n"
+            "Токен берётся с оригинального приложения (см. README, раздел «Токен»)."
+        )
+    out = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "=" in line and not line.startswith("ey") and "INTEGRITY_TOKEN" in line:
+            line = line.split("=", 1)[1].strip()
+        if len(line) > 40 and line not in out:
+            out.append(line)
+    if not out:
+        raise SystemExit("в файле токенов нет подходящих строк")
+    return out
 
 
 def run_one(uid: str, token: str, ver: str) -> dict:
@@ -197,11 +214,27 @@ def run_one(uid: str, token: str, ver: str) -> dict:
     return dto
 
 
+def try_tokens(uid: str, tokens: list[str], ver: str) -> tuple[dict, str]:
+    """Перебирает кандидатов: сервер принимает только токен от сборки из Play."""
+    last = None
+    for i, tok in enumerate(tokens, 1):
+        print(f"\n-- кандидат {i}/{len(tokens)} ({len(tok)} симв.) --")
+        try:
+            return run_one(uid, tok, ver), tok
+        except PermissionError as err:
+            last = err
+            print(f"  отказ: {err}")
+        except Exception as err:  # noqa: BLE001
+            last = err
+            print(f"  ошибка: {err}")
+    raise SystemExit(f"ни один токен не подошёл. последняя ошибка: {last}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Unlock-r code generator")
     ap.add_argument("--uid", help="использовать существующий uid вместо нового")
     ap.add_argument("--token", help="Play Integrity токен")
-    ap.add_argument("--token-file", help="файл с Play Integrity токеном")
+    ap.add_argument("--token-file", help="файл с Play Integrity токеном(ами)")
     ap.add_argument("--ver", default=DEFAULT_VER, help="версия приложения (ver)")
     ap.add_argument("--count", type=int, default=1, help="сколько кодов получить")
     ap.add_argument("--list", action="store_true",
@@ -214,16 +247,16 @@ def main() -> int:
             print(json.dumps(item, ensure_ascii=False))
         return 0
 
-    token = read_token(args)
+    tokens = read_token(args)
 
     for n in range(args.count):
         if args.count > 1:
             print(f"\n=== код {n + 1}/{args.count} ===")
         uid = args.uid or str(uuid.uuid4())
         try:
-            run_one(uid, token, args.ver)
-        except PermissionError as err:
-            print(f"ОТКАЗ: {err}", file=sys.stderr)
+            try_tokens(uid, tokens, args.ver)
+        except SystemExit as err:
+            print(str(err), file=sys.stderr)
             return 2
         except Exception as err:  # noqa: BLE001 — CLI, показываем причину
             print(f"ОШИБКА: {err}", file=sys.stderr)
