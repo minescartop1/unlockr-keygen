@@ -55,6 +55,9 @@ def main() -> int:
     # Им подменяется stamp-cert-sha256, который приложение сверяет со своим.
     stamp_hex = os.environ.get("STAMP_CERT_SHA256", "").strip().replace(":", "")
     stamp = bytes.fromhex(stamp_hex) if stamp_hex else None
+    # для варианта-набора сплитов requiredSplitTypes должен остаться
+    keep_required_splits = bool(os.environ.get("KEEP_REQUIRED_SPLITS"))
+    no_libs = bool(os.environ.get("NO_LIBS"))
 
     tmp = out.with_suffix(out.suffix + ".tmp")
     written = set()
@@ -71,7 +74,7 @@ def main() -> int:
                 print(f"  заменён {name} ({len(dexes[name])} байт)")
                 continue
             payload = zin.read(name)
-            if name == "AndroidManifest.xml":
+            if name == "AndroidManifest.xml" and not keep_required_splits:
                 payload, n = patch_axml(payload, "base__abi,base__density", "")
                 if n:
                     print("  манифест: снято требование сплитов "
@@ -84,7 +87,7 @@ def main() -> int:
             zout.writestr(info, payload, compress_type=info.compress_type)
 
         with zipfile.ZipFile(arm64, "r") as zsplit:
-            for info in zsplit.infolist():
+            for info in (() if no_libs else zsplit.infolist()):
                 name = info.filename
                 if not name.startswith("lib/") or name in written:
                     continue
