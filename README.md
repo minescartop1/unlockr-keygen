@@ -95,7 +95,41 @@ JSON. Отсюда и патч «99999» — это правка отображ�
 | APK ставится как обычный файл | работает — снято `requiredSplitTypes` |
 | **выдача настоящего access-кода** | **требует живой Play Integrity токен с оригинала из Play** |
 
-### Про токен — почему телефон без Play Services не мешает
+### Как добыть токен — два рецепта
+
+Токен — это строка из query-параметра `integrityToken` в запросе
+`https://app.unlockr.app/generateCode`. Выглядит как длинный base64url
+(~1–3 КБ). Взять его можно двумя способами, оба без root.
+
+**Способ 1: mitmproxy (нужен ПК и телефон с Play Store)**
+
+```bash
+# на ПК
+mitmproxy --mode regular --listen-port 8080 --set block_global=false
+# телефон: Настройки → Wi-Fi → сеть → прокси = IP ПК:8080
+# телефон: Настройки → Безопасность → Установка сертификата → mitmproxy.crt
+# открыть Unlock-r (версия из Play) и нажать "получить код"
+# в логе mitmproxy ищем строку:
+#   https://app.unlockr.app/generateCode?...&integrityToken=<ТОКЕН>
+```
+
+Дальше токен кладётся в `integrity_token.txt` рядом с `keygen.py` (или
+`--token`).
+
+**Способ 2: Frida (нужен root на телефоне с оригиналом)**
+
+```bash
+frida -U -n Unlock-r -l tools/capture_token.js
+# в stdout: INTEGRITY_TOKEN=<...>
+```
+
+**Способ 3: вообще без устройства**
+
+Токен привязан к приложению (package + сертификат Play), а не к телефону.
+Значит его можно снять один раз на любой машине с Play Store — friend's
+телефон, старый, эмулятор с Google APIs — и использовать где угодно. Сам
+`keygen.py` Android не нужен вообще.
+
 
 Токен Play Integrity привязан к **приложению** (package name + digest сертификата
 подписи), а не к устройству. Отсюда:
