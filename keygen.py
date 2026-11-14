@@ -163,11 +163,18 @@ def read_token(args) -> str:
     if os.path.exists(default):
         with open(default, "r", encoding="utf-8") as fh:
             return fh.read().strip()
+    # токен, который приложение само выложило на shared storage
+    shared = "/sdcard/Download/unlockr_pi.txt"
+    if os.path.exists(shared):
+        with open(shared, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
     raise SystemExit(
         "нет Play Integrity токена.\n"
         "Передай --token <значение>, --token-file <путь> или положи файл "
         "integrity_token.txt рядом со скриптом.\n"
-        "Токен берётся из оригинального приложения (см. README, раздел «Токен»)."
+        "Либо открой приложение и нажми «получить код» — оно само выложит "
+        "токен в /sdcard/Download/unlockr_pi.txt.\n"
+        "Токен берётся с оригинального приложения (см. README, раздел «Токен»)."
     )
 
 

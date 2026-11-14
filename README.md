@@ -99,7 +99,26 @@ JSON. Отсюда и патч «99999» — это правка отображ�
 
 Токен — это строка из query-параметра `integrityToken` в запросе
 `https://app.unlockr.app/generateCode`. Выглядит как длинный base64url
-(~1–3 КБ). Взять его можно двумя способами, оба без root.
+(~1–3 КБ). Взять его можно тремя способами.
+
+**Способ 0 (самый простой): дать его снять самому приложению**
+
+В сборке хук на `Lwc/a;->B()` — хелпер, которым заполняются query-параметры
+всех запросов — ловит `integrityToken` и пишет его:
+
+* в logcat, тег `UnlockrPI` (строка `INTEGRITY_TOKEN=...`);
+* в файл `/sdcard/Download/unlockr_pi.txt`.
+
+То есть: открыть приложение, нажать «получить код» — токен сам окажется на
+shared storage, его можно забрать и файлом, и из логката. Ни root, ни
+перехват TLS не нужны.
+
+```bash
+# файл
+cat /sdcard/Download/unlockr_pi.txt
+# или логкат
+adb logcat -s UnlockrPI
+```
 
 **Способ 1: mitmproxy (нужен ПК и телефон с Play Store)**
 
@@ -113,8 +132,9 @@ mitmproxy --mode regular --listen-port 8080 --set block_global=false
 #   https://app.unlockr.app/generateCode?...&integrityToken=<ТОКЕН>
 ```
 
-Дальше токен кладётся в `integrity_token.txt` рядом с `keygen.py` (или
-`--token`).
+ВНИМАНИЕ: у приложения нет `networkSecurityConfig`, поэтому пользовательский CA
+Android ему не доверяет — mitmproxy сработает только если сертификат поставлен
+как системный (нужен root) либо на устройстве с targetSdk < 24.
 
 **Способ 2: Frida (нужен root на телефоне с оригиналом)**
 
